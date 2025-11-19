@@ -1,4 +1,4 @@
-import InvestSuccessPage from '@/components/success-client'
+import InvestSuccessPage from './success-client'
 
 export default function SuccessPage() {
   return <InvestSuccessPage />
