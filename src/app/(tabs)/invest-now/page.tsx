@@ -317,7 +317,7 @@ export default function InvestNowPage() {
                       </ul>
                     </div>
 
-                    <div className='text-right'>
+                    <div className='text-right mt-5'>
                       <div className='text-2xl font-bold'>
                         ₦{Number(p.amount).toLocaleString()}
                       </div>
@@ -416,12 +416,6 @@ export default function InvestNowPage() {
 
       {/* Floating Support Button & History Shortcut */}
       <div>
-        <Link href='/transactions'>
-          <span className='fixed left-4 bottom-6 bg-white border p-3 rounded-full shadow-md flex items-center gap-2'>
-            <Clock className='w-4 h-4 text-gray-700' /> My transactions
-          </span>
-        </Link>
-
         <Link href='/contact-us'>
           <span className='fixed right-4 bottom-6 bg-blue-600 text-white p-4 rounded-full shadow-lg flex items-center justify-center'>
             <MessageSquare className='w-5 h-5' />
