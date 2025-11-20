@@ -82,7 +82,7 @@ export default function DashboardPage() {
         <div>
           <h2 className='text-xl font-semibold mb-2'>Quick Actions</h2>
           <div className='grid grid-cols-2 gap-4'>
-            <Link href='/invest'>
+            <Link href='/invest-now'>
               <Card className='p-5 rounded-2xl hover:shadow-md transition cursor-pointer'>
                 <CardContent className='flex flex-col items-center gap-3'>
                   <ArrowUpRight className='h-6 w-6 text-green-600' />
