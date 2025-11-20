@@ -1,145 +1,117 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import ProtectedRoute from '@/components/ProtectedRoute'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { useRouter } from 'next/navigation'
-
-interface Transaction {
-  id: number
-  amount: number
-  reference: string
-  status: string
-  created_at: string
-}
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ArrowDownLeft, ArrowUpRight, Wallet, Loader2 } from 'lucide-react'
+import ProtectedRoute from '@/components/ProtectedRoute'
 
 export default function DashboardPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
-  const [totalInvested, setTotalInvested] = useState(0)
+  const [user, setUser] = useState<any>(null)
   const [balance, setBalance] = useState(0)
-
-  const router = useRouter()
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const userEmail = sessionData.session?.user?.email
-      if (!userEmail) return
+    ;(async () => {
+      const { data } = await supabase.auth.getUser()
+      const u = data?.user
+      setUser(u)
 
-      // Fetch transactions
-      const { data: txData, error: txError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_email', userEmail)
-        .order('created_at', { ascending: false })
+      if (u?.email) {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('first_name, last_name, balance')
+          .eq('email', u.email)
+          .single()
 
-      if (txError) console.error('Failed to fetch transactions:', txError)
-      else if (txData) {
-        setTransactions(txData)
-        setTotalInvested(txData.reduce((acc, tx) => acc + tx.amount, 0))
+        setBalance(profile?.balance || 0)
       }
 
-      // Fetch user balance
-      const { data: profileData, error: profileError } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('email', userEmail)
-        .single()
-
-      if (profileError) console.error('Failed to fetch balance:', profileError)
-      else if (profileData) setBalance(profileData.balance)
-
       setLoading(false)
-    }
-
-    fetchData()
+    })()
   }, [])
-
-  const recentTransactions = transactions.slice(0, 3)
 
   return (
     <ProtectedRoute>
-      <div className='p-6 max-w-5xl mx-auto space-y-6'>
-        <h1 className='text-3xl font-bold text-blue-600'>Dashboard</h1>
+      <div className='p-6 space-y-8 max-w-3xl mx-auto'>
+        {/* HEADER */}
+        <div>
+          <h1 className='text-3xl font-bold'>
+            Hello,{' '}
+            {loading
+              ? '...'
+              : `${user?.user_metadata?.first_name || ''} ${
+                  user?.user_metadata?.last_name || ''
+                }`}
+          </h1>
+          <p className='text-gray-500 mt-1'>Welcome back 👋</p>
+        </div>
 
-        {loading ? (
-          <p className='text-gray-500'>Loading...</p>
-        ) : (
-          <>
-            {/* Summary Cards */}
-            <div className='grid gap-6 sm:grid-cols-2 lg:grid-cols-3'>
-              <Card className='border border-gray-200 shadow-sm'>
-                <CardHeader>
-                  <CardTitle>Balance</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className='text-2xl font-bold'>
-                    ₦{balance.toLocaleString()}
-                  </p>
-                </CardContent>
-              </Card>
+        {/* BALANCE CARD */}
+        <Card className='border shadow-sm rounded-2xl'>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2 text-lg'>
+              <Wallet className='h-5 w-5' />
+              Available Balance
+            </CardTitle>
+          </CardHeader>
 
-              <Card className='border border-gray-200 shadow-sm'>
-                <CardHeader>
-                  <CardTitle>Total Invested</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className='text-2xl font-bold'>
-                    ₦{totalInvested.toLocaleString()}
-                  </p>
-                </CardContent>
-              </Card>
+          <CardContent>
+            {loading ? (
+              <p className='text-3xl font-bold flex items-center gap-2'>
+                <Loader2 className='h-6 w-6 animate-spin' /> Loading…
+              </p>
+            ) : (
+              <p className='text-4xl font-bold'>₦{balance.toLocaleString()}</p>
+            )}
 
-              <Card className='border border-gray-200 shadow-sm flex flex-col justify-center items-center'>
-                <Button onClick={() => router.push('/withdraw')}>
+            <div className='mt-4 flex gap-3'>
+              <Link href='/withdraw'>
+                <Button className='w-full bg-black text-white rounded-xl py-5 text-base'>
                   Withdraw Funds
                 </Button>
-              </Card>
+              </Link>
             </div>
+          </CardContent>
+        </Card>
 
-            {/* Recent Transactions */}
-            <div>
-              <h2 className='text-xl font-semibold mb-4'>
-                Recent Transactions
-              </h2>
-              {recentTransactions.length === 0 ? (
-                <p className='text-gray-500'>No transactions yet.</p>
-              ) : (
-                <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-                  {recentTransactions.map((tx) => (
-                    <Card
-                      key={tx.id}
-                      className='border border-gray-200 shadow-sm hover:shadow-lg transition-shadow'
-                    >
-                      <CardHeader>
-                        <CardTitle>₦{tx.amount.toLocaleString()}</CardTitle>
-                        <CardDescription className='text-gray-500'>
-                          {new Date(tx.created_at).toLocaleDateString()} -{' '}
-                          {tx.status.toUpperCase()}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <p className='text-gray-700 break-words'>
-                          Reference:{' '}
-                          <span className='font-mono'>{tx.reference}</span>
-                        </p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        )}
+        {/* QUICK ACTIONS */}
+        <div>
+          <h2 className='text-xl font-semibold mb-2'>Quick Actions</h2>
+          <div className='grid grid-cols-2 gap-4'>
+            <Link href='/invest'>
+              <Card className='p-5 rounded-2xl hover:shadow-md transition cursor-pointer'>
+                <CardContent className='flex flex-col items-center gap-3'>
+                  <ArrowUpRight className='h-6 w-6 text-green-600' />
+                  <p className='font-semibold'>Invest</p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href='/withdraw'>
+              <Card className='p-5 rounded-2xl hover:shadow-md transition cursor-pointer'>
+                <CardContent className='flex flex-col items-center gap-3'>
+                  <ArrowDownLeft className='h-6 w-6 text-red-600' />
+                  <p className='font-semibold'>Withdraw</p>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        </div>
+
+        {/* RECENT ACTIVITY */}
+        <div className='space-y-3'>
+          <h2 className='text-xl font-semibold'>Recent Transactions</h2>
+
+          <Card className='rounded-2xl border shadow-sm'>
+            <CardContent className='py-5 text-center text-gray-500'>
+              (Coming soon)
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </ProtectedRoute>
   )
