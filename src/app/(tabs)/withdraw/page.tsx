@@ -134,7 +134,7 @@ export default function WithdrawPage() {
     const { data, error } = await supabase
       .from('withdrawals')
       .select('*')
-      .eq('user_id', user.email) // FIXED HERE
+      .eq('email', user.email) // FIXED HERE
       .order('created_at', { ascending: false })
 
     if (!error) setHistory(data || [])
