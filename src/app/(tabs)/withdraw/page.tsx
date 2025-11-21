@@ -2,7 +2,40 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
+import { Loader2 } from 'lucide-react'
+
+/* shadcn-style UI imports (Option A) */
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+
+type Withdrawal = {
+  id: string
+  amount: number
+  status: string
+  bank_name?: string
+  account_number?: string
+  account_name?: string
+  created_at?: string
+}
+
+/**
+ * Illustration path (developer-uploaded). You can transform this to a public URL,
+ * or move the file to /public/illustrations and change the path later.
+ */
+const illustrationPath = '/illustration.png'
 
 export default function WithdrawPage() {
   const [user, setUser] = useState<any>(null)
@@ -14,254 +47,360 @@ export default function WithdrawPage() {
   const [amount, setAmount] = useState<number | ''>('')
 
   const [loading, setLoading] = useState(false)
-
-  const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(true)
+  const [history, setHistory] = useState<Withdrawal[]>([])
 
-  /* ------------------------------
-        Load User + Balance
-  -------------------------------*/
+  /* -------------------------
+     Load user & balance
+  -------------------------*/
   useEffect(() => {
     ;(async () => {
-      const { data } = await supabase.auth.getUser()
-      const u = data?.user ?? null
-      setUser(u)
+      try {
+        const { data } = await supabase.auth.getUser()
+        const u = data?.user ?? null
+        setUser(u)
 
-      if (u?.email) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('balance')
-          .eq('email', u.email)
-          .single()
+        if (u?.email) {
+          const { data: profile, error } = await supabase
+            .from('users')
+            .select('balance')
+            .eq('email', u.email)
+            .single()
 
-        setBalance(Number(profile?.balance ?? 0))
+          if (error) {
+            console.error('profile load error:', error)
+            toast.error('Failed to load profile.')
+          } else {
+            setBalance(Number(profile?.balance ?? 0))
+          }
+        }
+      } catch (err) {
+        console.error(err)
+        toast.error('Could not load user.')
       }
     })()
   }, [])
 
-  /* ------------------------------
-              Load Banks
-  -------------------------------*/
+  /* -------------------------
+     Load banks
+  -------------------------*/
   useEffect(() => {
     ;(async () => {
-      const res = await fetch('/api/withdraw/banks')
-      const json = await res.json()
-      setBanks(json.data || json.banks || [])
+      try {
+        const res = await fetch('/api/withdraw/banks')
+        const json = await res.json()
+        setBanks(json.data || json.banks || [])
+      } catch (err) {
+        console.error('banks fetch error:', err)
+        toast.error('Failed to load banks.')
+      }
     })()
   }, [])
 
-  /* ------------------------------
-       Resolve Account Details
-  -------------------------------*/
+  /* -------------------------
+     Resolve account
+  -------------------------*/
   const resolveAccount = async () => {
     if (!bankCode || accountNumber.length < 6) return
     setLoading(true)
-
-    const res = await fetch('/api/withdraw/resolve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bank_code: bankCode,
-        account_number: accountNumber,
-      }),
-    })
-
-    const json = await res.json()
-    setLoading(false)
-
-    if (json.status) {
-      setAccountName(json.account_name)
-    } else {
-      alert(json.message || 'Could not resolve account')
-      setAccountName('')
+    try {
+      const res = await fetch('/api/withdraw/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bank_code: bankCode,
+          account_number: accountNumber,
+        }),
+      })
+      const json = await res.json()
+      if (json.status) {
+        setAccountName(json.account_name)
+        toast.success('Account resolved — confirm the name.')
+      } else {
+        setAccountName('')
+        toast.error(json.message || 'Could not resolve account.')
+      }
+    } catch (err) {
+      console.error('resolve error:', err)
+      toast.error('Server error resolving account.')
+    } finally {
+      setLoading(false)
     }
   }
 
-  /* ------------------------------
-          Submit Withdrawal
-  -------------------------------*/
+  /* -------------------------
+     Submit withdrawal
+  -------------------------*/
   const submitWithdraw = async () => {
-    if (!user) return alert('You must be logged in')
+    if (!user) return toast.error('You must be logged in.')
     if (!bankCode || !accountNumber || !accountName)
-      return alert('Confirm account details first.')
-    if (!amount || Number(amount) <= 0) return alert('Enter valid amount')
-    if (Number(amount) > balance) return alert('Insufficient balance')
+      return toast.error('Confirm account details first.')
+    if (!amount || Number(amount) <= 0)
+      return toast.error('Enter valid amount.')
+    if (Number(amount) > balance) return toast.error('Insufficient balance.')
 
     setLoading(true)
+    try {
+      const res = await fetch('/api/withdraw/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          email: user.email,
+          amount: Number(amount),
+          bank_code: bankCode,
+          bank_name: banks.find((b) => b.code === bankCode)?.name ?? '',
+          account_number: accountNumber,
+          account_name: accountName,
+        }),
+      })
 
-    const res = await fetch('/api/withdraw/request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: user.id,
-        email: user.email,
-        amount: Number(amount),
-        bank_code: bankCode,
-        bank_name: banks.find((b) => b.code === bankCode)?.name ?? '',
-        account_number: accountNumber,
-        account_name: accountName,
-      }),
-    })
+      const json = await res.json()
 
-    const json = await res.json()
-    setLoading(false)
+      if (json.status) {
+        toast.success('Withdrawal initiated successfully.')
+        setBalance((prev) => prev - Number(amount))
 
-    if (json.status) {
-      alert('Withdrawal initiated successfully.')
-      setBalance((prev) => prev - Number(amount))
+        setAmount('')
+        setBankCode('')
+        setAccountNumber('')
+        setAccountName('')
 
-      // Reset fields
-      setAmount('')
-      setBankCode('')
-      setAccountNumber('')
-      setAccountName('')
-
-      // Reload history
-      loadHistory()
-    } else {
-      alert(json.message || 'Withdrawal failed')
+        // reload history
+        loadHistory()
+      } else {
+        console.error('withdraw request failed', json)
+        toast.error(json.message || 'Withdrawal failed.')
+      }
+    } catch (err) {
+      console.error('submitWithdraw error:', err)
+      toast.error('Server error while initiating withdrawal.')
+    } finally {
+      setLoading(false)
     }
   }
 
-  /* ------------------------------
-       Load Withdrawal History
-  -------------------------------*/
+  /* -------------------------
+     Load history
+  -------------------------*/
   const loadHistory = async () => {
     if (!user?.email) return
-
     setLoadingHistory(true)
+    try {
+      const { data, error } = await supabase
+        .from('withdrawals')
+        .select('*')
+        .eq('email', user.email)
+        .order('created_at', { ascending: false })
 
-    const { data, error } = await supabase
-      .from('withdrawals')
-      .select('*')
-      .eq('email', user.email) // FIXED HERE
-      .order('created_at', { ascending: false })
-
-    if (!error) setHistory(data || [])
-    setLoadingHistory(false)
+      if (error) {
+        console.error('history load error:', error)
+        toast.error('Failed to load history.')
+        setHistory([])
+      } else {
+        setHistory(data || [])
+      }
+    } catch (err) {
+      console.error('history fetch error:', err)
+      toast.error('Failed to load history.')
+    } finally {
+      setLoadingHistory(false)
+    }
   }
 
   useEffect(() => {
     if (user?.email) loadHistory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
-  /* ------------------------------
-               UI
-  -------------------------------*/
+  /* -------------------------
+       UI Render
+  -------------------------*/
   return (
-    <div className='p-6 max-w-lg mx-auto space-y-10'>
+    <div className='max-w-3xl mx-auto p-6 space-y-8'>
       {/* HEADER */}
-      <div>
-        <h1 className='text-3xl font-bold'>Withdraw Funds</h1>
-        <p className='text-gray-500 mt-1'>
-          Available Balance:{' '}
-          <span className='font-semibold text-black'>
-            ₦{balance.toLocaleString()}
-          </span>
-        </p>
+      <div className='grid grid-cols-1 md:grid-cols-3 gap-6 items-center'>
+        <div className='md:col-span-2 space-y-2'>
+          <h1 className='text-3xl font-bold'>Withdraw Funds</h1>
+          <p className='text-sm text-gray-600'>
+            Available Balance:{' '}
+            <span className='font-semibold text-black'>
+              ₦{balance.toLocaleString()}
+            </span>
+          </p>
+        </div>
+
+        <div className='hidden md:flex justify-end items-center'>
+          {/* small illustration on the right */}
+          <div className='w-36 h-24 rounded-lg overflow-hidden shadow-sm'>
+            <Image
+              src={illustrationPath}
+              alt='withdraw illustration'
+              width={360}
+              height={240}
+              className='object-cover'
+            />
+          </div>
+        </div>
       </div>
 
-      {/* WITHDRAWAL FORM */}
-      <div className='bg-white shadow-md border rounded-xl p-6 space-y-5'>
-        {/* Bank Dropdown */}
-        <div>
-          <label className='block text-sm font-medium mb-1'>Bank</label>
-          <select
-            value={bankCode}
-            onChange={(e) => setBankCode(e.target.value)}
-            className='w-full border rounded-lg p-3 bg-gray-50'
-          >
-            <option value=''>Select bank</option>
-            {banks.map((b) => (
-              <option key={b.code} value={b.code}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* FORM CARD */}
+      <Card className='p-6 rounded-2xl'>
+        <CardHeader>
+          <CardTitle className='text-lg font-semibold'>
+            Make a Withdrawal
+          </CardTitle>
+        </CardHeader>
 
-        {/* Account Number */}
-        <div>
-          <label className='block text-sm font-medium mb-1'>
-            Account Number
-          </label>
-          <input
-            value={accountNumber}
-            onChange={(e) => setAccountNumber(e.target.value)}
-            onBlur={resolveAccount}
-            className='w-full border rounded-lg p-3'
-            placeholder='Enter account number'
-          />
-        </div>
+        <CardContent className='space-y-4'>
+          {/* Bank */}
+          <div>
+            <label className='block text-sm font-medium mb-2'>Bank</label>
+            <Select onValueChange={(val) => setBankCode(val)}>
+              <SelectTrigger className='w-full'>
+                <SelectValue placeholder='Select bank' />
+              </SelectTrigger>
+              <SelectContent>
+                {banks.length === 0 ? (
+                  <SelectItem value='Select bank'>
+                    No banks available
+                  </SelectItem>
+                ) : (
+                  banks.map((b) => (
+                    <SelectItem key={b.code} value={b.code}>
+                      {b.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Account Name */}
-        {accountName && (
-          <p className='text-green-600 text-sm font-semibold'>{accountName}</p>
-        )}
+          {/* Account Number */}
+          <div>
+            <label className='block text-sm font-medium mb-2'>
+              Account Number
+            </label>
+            <Input
+              value={accountNumber}
+              onChange={(e) => setAccountNumber(e.target.value)}
+              onBlur={resolveAccount}
+              placeholder='e.g. 0061234567'
+            />
+          </div>
 
-        {/* Amount */}
-        <div>
-          <label className='block text-sm font-medium mb-1'>Amount</label>
-          <input
-            type='number'
-            value={amount}
-            onChange={(e) =>
-              setAmount(e.target.value === '' ? '' : Number(e.target.value))
-            }
-            className='w-full border rounded-lg p-3'
-            placeholder='Amount'
-          />
-        </div>
+          {/* Account name */}
+          {accountName && (
+            <div className='text-sm text-green-600 font-medium'>
+              {accountName}
+            </div>
+          )}
 
-        {/* Withdraw Button */}
-        <button
-          disabled={loading}
-          onClick={submitWithdraw}
-          className='w-full bg-black text-white py-3 rounded-lg font-semibold hover:bg-gray-900 transition disabled:opacity-40'
-        >
-          {loading ? 'Processing...' : 'Withdraw'}
-        </button>
-      </div>
+          {/* Amount */}
+          <div>
+            <label className='block text-sm font-medium mb-2'>Amount</label>
+            <Input
+              type='number'
+              value={amount}
+              onChange={(e) =>
+                setAmount(e.target.value === '' ? '' : Number(e.target.value))
+              }
+              placeholder='Enter amount'
+            />
+            <p className='text-xs text-gray-500 mt-1'>
+              Max withdrawable:{' '}
+              <span className='font-semibold'>₦{balance.toLocaleString()}</span>
+            </p>
+          </div>
 
-      {/* WITHDRAWAL HISTORY */}
+          {/* CTA */}
+          <div className='flex items-center gap-3'>
+            <Button
+              onClick={submitWithdraw}
+              disabled={loading}
+              className='flex-1'
+            >
+              {loading ? (
+                <span className='flex items-center gap-2'>
+                  <Loader2 className='w-4 h-4 animate-spin' /> Processing...
+                </span>
+              ) : (
+                'Withdraw'
+              )}
+            </Button>
+
+            <Button
+              variant='outline'
+              onClick={() => {
+                // quick refill demo - open contact page (or replace with top-up logic)
+                window.location.href = '/contact-us'
+              }}
+            >
+              Need help?
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* HISTORY */}
       <div className='space-y-4'>
         <h2 className='text-xl font-semibold'>Withdrawal History</h2>
 
         {loadingHistory ? (
-          <p className='text-gray-500'>Loading history…</p>
+          <div className='grid gap-4'>
+            <Skeleton className='h-20 rounded-lg' />
+            <Skeleton className='h-20 rounded-lg' />
+          </div>
         ) : history.length === 0 ? (
-          <p className='text-gray-500'>No withdrawals yet.</p>
+          <Card className='p-6 text-center'>
+            <p className='text-gray-600'>No withdrawals yet.</p>
+            <p className='text-sm text-gray-500 mt-2'>
+              Make a withdrawal and it&apos;ll show up here.
+            </p>
+          </Card>
         ) : (
-          <div className='space-y-3'>
+          <div className='grid gap-4'>
             {history.map((w) => (
-              <div
-                key={w.id}
-                className='border bg-white shadow-sm p-4 rounded-xl'
-              >
-                <div className='flex justify-between'>
-                  <p className='font-semibold'>
-                    ₦{Number(w.amount).toLocaleString()}
-                  </p>
+              <Card key={w.id} className='p-4 flex justify-between items-start'>
+                <div>
+                  <div className='flex items-center gap-3'>
+                    <div>
+                      <div className='text-base font-semibold'>
+                        ₦{Number(w.amount).toLocaleString()}
+                      </div>
+                      <div className='text-xs text-gray-500'>
+                        to {w.account_name ?? w.account_number}
+                      </div>
+                    </div>
+                  </div>
 
-                  <span
-                    className={`text-sm font-semibold ${
-                      w.status === 'success'
-                        ? 'text-green-600'
-                        : w.status === 'failed'
-                        ? 'text-red-600'
-                        : 'text-orange-500'
-                    }`}
-                  >
-                    {w.status}
-                  </span>
+                  <div className='text-xs text-gray-500 mt-2'>
+                    {w.bank_name}
+                  </div>
                 </div>
 
-                <p className='text-sm text-gray-600'>{w.bank_name}</p>
+                <div className='text-right'>
+                  <div>
+                    <Badge
+                      variant={
+                        w.status === 'success'
+                          ? 'default'
+                          : w.status === 'failed'
+                          ? 'destructive'
+                          : 'secondary'
+                      }
+                    >
+                      {w.status}
+                    </Badge>
+                  </div>
 
-                <p className='text-xs text-gray-500'>
-                  {new Date(w.created_at).toLocaleString()}
-                </p>
-              </div>
+                  <div className='text-xs text-gray-400 mt-2'>
+                    {w.created_at
+                      ? new Date(w.created_at).toLocaleDateString()
+                      : ''}
+                  </div>
+                </div>
+              </Card>
             ))}
           </div>
         )}

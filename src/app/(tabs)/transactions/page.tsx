@@ -235,7 +235,8 @@ export default function TransactionsPage() {
     if (
       filter === 'pending' &&
       it.status !== 'pending' &&
-      it.status !== 'initiated'
+      it.status !== 'initiated' &&
+      it.status !== 'processing'
     )
       return false
     if (
@@ -398,7 +399,7 @@ export default function TransactionsPage() {
                                 variant={
                                   it.status === 'success' ||
                                   it.status === 'completed'
-                                    ? 'outline'
+                                    ? 'default'
                                     : it.status === 'failed' ||
                                       it.status === 'error'
                                     ? 'destructive'
