@@ -321,7 +321,7 @@ export default function InvestNowPage() {
                       <div className='text-2xl font-bold'>
                         ₦{Number(p.amount).toLocaleString()}
                       </div>
-                      <div className='text-xs text-gray-400'>one-time</div>
+                      <div className='text-xs text-gray-400'>30 days</div>
                     </div>
                   </div>
 
