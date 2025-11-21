@@ -241,7 +241,7 @@ export default function TransactionsPage() {
       return false
     if (
       filter === 'successful' &&
-      !['success', 'completed'].includes(it.status)
+      !['success', 'completed', 'paid'].includes(it.status)
     )
       return false
     if (filter === 'failed' && !['failed', 'error'].includes(it.status))
@@ -398,7 +398,8 @@ export default function TransactionsPage() {
                               <Badge
                                 variant={
                                   it.status === 'success' ||
-                                  it.status === 'completed'
+                                  it.status === 'completed' ||
+                                  it.status === 'paid'
                                     ? 'default'
                                     : it.status === 'failed' ||
                                       it.status === 'error'
