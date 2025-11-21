@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -11,20 +11,22 @@ import AuthGuard from '@/components/AuthGuard'
 
 export default function SignupPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   const [referralInput, setReferralInput] = useState('')
   const [referrer, setReferrer] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // FIX: remove useSearchParams and use window.search instead
   useEffect(() => {
-    const ref = searchParams.get('ref')
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const ref = params.get('ref')
     if (ref) {
       setReferrer(ref)
-      setReferralInput(ref) // autofill input
+      setReferralInput(ref)
     }
-  }, [searchParams])
+  }, [])
 
   const generateReferralCode = (first_name: string) => {
     return (
@@ -52,7 +54,6 @@ export default function SignupPage() {
       return
     }
 
-    // Find referrer (from URL OR manual input)
     let referred_by = null
     if (referralInput.trim() !== '') {
       const { data: refUser } = await supabase
@@ -64,7 +65,6 @@ export default function SignupPage() {
       if (refUser) referred_by = refUser.id
     }
 
-    // Signup the user in auth
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -79,10 +79,8 @@ export default function SignupPage() {
       return
     }
 
-    // Create referral code for this new user
     const referral_code = generateReferralCode(first_name)
 
-    // Insert user entry
     await supabase.from('users').insert({
       id: data.user?.id,
       first_name,
@@ -144,14 +142,13 @@ export default function SignupPage() {
               required
             />
 
-            {/* Referral Code Field */}
             <Input
               type='text'
               name='referral_code'
               placeholder='Referral Code (Optional)'
               value={referralInput}
               onChange={(e) => setReferralInput(e.target.value)}
-              disabled={!!referrer} // disable if link was used
+              disabled={!!referrer}
               className={referrer ? 'bg-gray-100 cursor-not-allowed' : ''}
             />
 
