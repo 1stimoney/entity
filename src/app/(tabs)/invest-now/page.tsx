@@ -51,7 +51,7 @@ export default function InvestNowPage() {
   const [activePlan, setActivePlan] = useState<Plan | null>(null)
 
   // Illustration path (uploaded file)
-  const illustrationPath = '/globe.svg'
+  const illustrationPath = '/illustration.png'
 
   useEffect(() => {
     // load session user
