@@ -29,40 +29,42 @@ export default function InvestSuccessPage() {
         })
 
         const json = await res.json()
+
         if (json.status) {
           setStatus('success')
         } else {
           setStatus('failed')
-          console.error('verify failed:', json)
         }
       } catch (err) {
-        console.error('verify error:', err)
+        console.error(err)
         setStatus('failed')
       }
-      // auto-redirect to dashboard in 2s
+
       setTimeout(() => router.push('/dashboard'), 2000)
     }
 
     verify()
-  }, [params])
+  }, [params, router])
 
   return (
     <div className='p-8 text-center'>
       {status === 'checking' && <p>Verifying payment…</p>}
+
       {status === 'success' && (
         <>
           <h1 className='text-2xl font-bold text-green-600'>
-            Payment verified!
+            Payment successful!
           </h1>
-          <p>Your investment is now recorded. Redirecting to dashboard…</p>
+          <p>Your investment has been recorded. Redirecting…</p>
         </>
       )}
+
       {status === 'failed' && (
         <>
           <h1 className='text-2xl font-bold text-red-600'>
             Verification failed
           </h1>
-          <p>Please contact support or try again.</p>
+          <p>Please contact support.</p>
         </>
       )}
     </div>

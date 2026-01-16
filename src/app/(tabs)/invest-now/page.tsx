@@ -123,6 +123,7 @@ export default function InvestNowPage() {
     try {
       setProcessingId(plan.id)
 
+      // 1️⃣ Create transaction first
       const { data: trx, error } = await supabase
         .from('transactions')
         .insert({
@@ -137,11 +138,19 @@ export default function InvestNowPage() {
         .single()
 
       if (error || !trx) {
-        console.error('Create trx error:', error)
         toast.error('Failed to create transaction.')
         setProcessingId(null)
         return
       }
+
+      // 2️⃣ Generate tx_ref
+      const txRef = `inv_${trx.id}`
+
+      // 3️⃣ SAVE tx_ref in DB (THIS WAS MISSING)
+      await supabase
+        .from('transactions')
+        .update({ flutterwave_ref: txRef })
+        .eq('id', trx.id)
 
       // ensure Flutterwave script loaded in layout
       // @ts-ignore
@@ -155,7 +164,7 @@ export default function InvestNowPage() {
       // open inline checkout
       FlutterwaveCheckout({
         public_key: process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY,
-        tx_ref: trx.id,
+        tx_ref: txRef, // ✅ SAME ref we saved
         amount: plan.amount,
         currency: 'NGN',
         customer: { email: user.email },
@@ -164,7 +173,7 @@ export default function InvestNowPage() {
           description: plan.description ?? 'Investment',
         },
         callback: function (response: any) {
-          window.location.href = `/invest-now/success?transaction_id=${response.transaction_id}&tx_ref=${response.tx_ref}`
+          window.location.href = `/invest-now/success?transaction_id=${response.transaction_id}&tx_ref=${txRef}`
         },
         onclose: function () {
           setProcessingId(null)
