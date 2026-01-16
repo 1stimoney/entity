@@ -426,7 +426,7 @@ export default function InvestNowPage() {
       {/* Floating Support Button & History Shortcut */}
       <div>
         <Link href='/contact-us'>
-          <span className='fixed right-4 bottom-6 bg-blue-600 text-white p-4 rounded-full shadow-lg flex items-center justify-center'>
+          <span className='fixed right-4 bottom-24 bg-blue-600 text-white p-4 rounded-full shadow-lg flex items-center justify-center'>
             <MessageSquare className='w-5 h-5' />
           </span>
         </Link>
