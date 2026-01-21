@@ -392,7 +392,7 @@ export default function TransactionsPage() {
                               <div className='font-semibold text-sm truncate'>
                                 {it.type === 'investment'
                                   ? `Investment — ${it.plan_name ?? 'Plan'}`
-                                  : 'Withdrawal'}
+                                  : 'Withdrawal' + ` — ${it.note ?? 'N/A'}`}
                               </div>
 
                               <Badge

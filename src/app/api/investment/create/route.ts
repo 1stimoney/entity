@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     // Accept either package_id OR plan_id
     const package_id = (body.package_id ?? body.plan_id) as string | undefined
 
-    if (!user_id || !package_id || !amount) {
+    if (!user_id || !package_id) {
       return NextResponse.json({ status: false, message: 'Invalid data' })
     }
 
@@ -25,7 +25,6 @@ export async function POST(req: Request) {
         .from('investments')
         .select('*')
         .eq('source_transaction_id', source_transaction_id)
-        .limit(1)
         .maybeSingle()
 
       if (existingErr) {
@@ -45,14 +44,55 @@ export async function POST(req: Request) {
       }
     }
 
-    // 1) Create investment row
+    // 1) Load plan so we can snapshot its fixed daily return
+    // IMPORTANT: this is what powers your "auto-credit every 24h for 30 days"
+    const { data: plan, error: planErr } = await supabaseServer
+      .from('investment_plans')
+      .select('id, amount, daily_return')
+      .eq('id', package_id)
+      .single()
+
+    if (planErr || !plan) {
+      console.error('plan fetch error', planErr)
+      return NextResponse.json({
+        status: false,
+        message: planErr?.message || 'Investment plan not found',
+      })
+    }
+
+    // 2) (Recommended) Validate amount matches plan.amount if amount was provided
+    // This prevents someone from calling this route directly with a fake amount.
+    if (typeof amount === 'number' && Number(amount) !== Number(plan.amount)) {
+      return NextResponse.json({
+        status: false,
+        message: 'Amount mismatch for selected plan',
+      })
+    }
+
+    // Use plan amount as canonical
+    const finalAmount = Number(plan.amount)
+
+    // 3) Initialize payout window: 30 days
+    const startsAt = new Date()
+    const endsAt = new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+    // 4) Create investment row
+    // NOTE: "package_id" is your DB column, but it points to investment_plans.id
     const { data: investment, error: investError } = await supabaseServer
       .from('investments')
       .insert({
         user_id,
-        package_id, // keep DB column name
-        amount,
+        package_id,
+        amount: finalAmount,
         source_transaction_id: source_transaction_id ?? null,
+
+        // payout engine fields
+        status: 'active',
+        starts_at: startsAt.toISOString(),
+        ends_at: endsAt.toISOString(),
+        daily_return: Number(plan.daily_return ?? 0),
+        days_paid: 0,
+        last_paid_at: null,
       })
       .select('*')
       .single()
