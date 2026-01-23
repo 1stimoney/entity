@@ -6,7 +6,13 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowDownLeft, ArrowUpRight, Wallet, Loader2 } from 'lucide-react'
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Wallet,
+  Loader2,
+  Layers,
+} from 'lucide-react'
 import ProtectedRoute from '@/components/ProtectedRoute'
 
 export default function DashboardPage() {
@@ -68,10 +74,19 @@ export default function DashboardPage() {
               <p className='text-4xl font-bold'>₦{balance.toLocaleString()}</p>
             )}
 
-            <div className='mt-4 flex gap-3'>
+            <div className='mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3'>
               <Link href='/withdraw'>
                 <Button className='w-full bg-black text-white rounded-xl py-5 text-base'>
                   Withdraw Funds
+                </Button>
+              </Link>
+
+              <Link href='/investments'>
+                <Button
+                  variant='outline'
+                  className='w-full rounded-xl py-5 text-base'
+                >
+                  View Investments
                 </Button>
               </Link>
             </div>
@@ -81,7 +96,8 @@ export default function DashboardPage() {
         {/* QUICK ACTIONS */}
         <div>
           <h2 className='text-xl font-semibold mb-2'>Quick Actions</h2>
-          <div className='grid grid-cols-2 gap-4'>
+
+          <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
             <Link href='/invest-now'>
               <Card className='p-5 rounded-2xl hover:shadow-md transition cursor-pointer'>
                 <CardContent className='flex flex-col items-center gap-3'>
@@ -96,6 +112,15 @@ export default function DashboardPage() {
                 <CardContent className='flex flex-col items-center gap-3'>
                   <ArrowDownLeft className='h-6 w-6 text-red-600' />
                   <p className='font-semibold'>Withdraw</p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href='/investments'>
+              <Card className='p-5 rounded-2xl hover:shadow-md transition cursor-pointer'>
+                <CardContent className='flex flex-col items-center gap-3'>
+                  <Layers className='h-6 w-6 text-blue-600' />
+                  <p className='font-semibold'>My Investments</p>
                 </CardContent>
               </Card>
             </Link>

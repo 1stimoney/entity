@@ -1,13 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Search } from 'lucide-react'
 
-/* shadcn-style UI imports (Option A) */
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,6 +19,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Separator } from '@/components/ui/separator'
 
 type Withdrawal = {
   id: string
@@ -31,17 +31,28 @@ type Withdrawal = {
   created_at?: string
 }
 
-/**
- * Illustration path (developer-uploaded). You can transform this to a public URL,
- * or move the file to /public/illustrations and change the path later.
- */
 const illustrationPath = '/illustration.png'
+
+// ---- Withdrawal rules ----
+const TAX_RATE = 0.04
+const MIN_WITHDRAWAL = 2000
+
+function fmtNGN(n: number) {
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    maximumFractionDigits: 0,
+  }).format(n)
+}
 
 export default function WithdrawPage() {
   const [user, setUser] = useState<any>(null)
   const [balance, setBalance] = useState<number>(0)
+
   const [banks, setBanks] = useState<any[]>([])
+  const [bankSearch, setBankSearch] = useState('')
   const [bankCode, setBankCode] = useState('')
+
   const [accountNumber, setAccountNumber] = useState('')
   const [accountName, setAccountName] = useState('')
   const [amount, setAmount] = useState<number | ''>('')
@@ -49,6 +60,34 @@ export default function WithdrawPage() {
   const [loading, setLoading] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [history, setHistory] = useState<Withdrawal[]>([])
+
+  const selectedBankName = useMemo(() => {
+    return banks.find((b) => b.code === bankCode)?.name ?? ''
+  }, [banks, bankCode])
+
+  const amountNumber = useMemo(() => {
+    if (amount === '') return 0
+    return Number(amount) || 0
+  }, [amount])
+
+  const fee = useMemo(() => {
+    // round to whole naira
+    return Math.max(0, Math.round(amountNumber * TAX_RATE))
+  }, [amountNumber])
+
+  const net = useMemo(() => {
+    return Math.max(0, amountNumber - fee)
+  }, [amountNumber, fee])
+
+  const filteredBanks = useMemo(() => {
+    const q = bankSearch.trim().toLowerCase()
+    if (!q) return banks
+    return banks.filter((b) =>
+      String(b.name ?? '')
+        .toLowerCase()
+        .includes(q)
+    )
+  }, [banks, bankSearch])
 
   /* -------------------------
      Load user & balance
@@ -101,7 +140,9 @@ export default function WithdrawPage() {
      Resolve account
   -------------------------*/
   const resolveAccount = async () => {
-    if (!bankCode || accountNumber.length < 6) return
+    if (!bankCode) return
+    if (accountNumber.trim().length < 10) return // NGN accounts are usually 10 digits
+
     setLoading(true)
     try {
       const res = await fetch('/api/withdraw/resolve', {
@@ -109,7 +150,7 @@ export default function WithdrawPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bank_code: bankCode,
-          account_number: accountNumber,
+          account_number: accountNumber.trim(),
         }),
       })
       const json = await res.json()
@@ -123,58 +164,6 @@ export default function WithdrawPage() {
     } catch (err) {
       console.error('resolve error:', err)
       toast.error('Server error resolving account.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  /* -------------------------
-     Submit withdrawal
-  -------------------------*/
-  const submitWithdraw = async () => {
-    if (!user) return toast.error('You must be logged in.')
-    if (!bankCode || !accountNumber || !accountName)
-      return toast.error('Confirm account details first.')
-    if (!amount || Number(amount) <= 0)
-      return toast.error('Enter valid amount.')
-    if (Number(amount) > balance) return toast.error('Insufficient balance.')
-
-    setLoading(true)
-    try {
-      const res = await fetch('/api/withdraw/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          email: user.email,
-          amount: Number(amount),
-          bank_code: bankCode,
-          bank_name: banks.find((b) => b.code === bankCode)?.name ?? '',
-          account_number: accountNumber,
-          account_name: accountName,
-        }),
-      })
-
-      const json = await res.json()
-
-      if (json.status) {
-        toast.success('Withdrawal initiated successfully.')
-        setBalance((prev) => prev - Number(amount))
-
-        setAmount('')
-        setBankCode('')
-        setAccountNumber('')
-        setAccountName('')
-
-        // reload history
-        loadHistory()
-      } else {
-        console.error('withdraw request failed', json)
-        toast.error(json.message || 'Withdrawal failed.')
-      }
-    } catch (err) {
-      console.error('submitWithdraw error:', err)
-      toast.error('Server error while initiating withdrawal.')
     } finally {
       setLoading(false)
     }
@@ -214,8 +203,88 @@ export default function WithdrawPage() {
   }, [user])
 
   /* -------------------------
-       UI Render
+     Submit withdrawal
   -------------------------*/
+  const submitWithdraw = async () => {
+    if (!user) return toast.error('You must be logged in.')
+    if (!bankCode) return toast.error('Select your bank.')
+    if (!accountNumber.trim()) return toast.error('Enter account number.')
+    if (!accountName) return toast.error('Resolve account first.')
+
+    if (!amountNumber || amountNumber <= 0)
+      return toast.error('Enter a valid amount.')
+
+    if (amountNumber < MIN_WITHDRAWAL) {
+      return toast.error(
+        `Minimum withdrawal is ₦${MIN_WITHDRAWAL.toLocaleString()}.`
+      )
+    }
+
+    if (amountNumber > balance) return toast.error('Insufficient balance.')
+
+    if (net <= 0) {
+      return toast.error('Net amount must be greater than ₦0.')
+    }
+
+    setLoading(true)
+    try {
+      const res = await fetch('/api/withdraw/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          email: user.email,
+
+          // gross amount user requested
+          amount: amountNumber,
+
+          // extra fields (recommended to store)
+          fee,
+          net_amount: net,
+
+          bank_code: bankCode,
+          bank_name: selectedBankName,
+          account_number: accountNumber.trim(),
+          account_name: accountName,
+        }),
+      })
+
+      const json = await res.json()
+
+      if (json.status) {
+        toast.success('Withdrawal initiated successfully.')
+
+        // subtract the gross amount from UI balance (what user chose to withdraw)
+        setBalance((prev) => prev - amountNumber)
+
+        setAmount('')
+        setBankCode('')
+        setBankSearch('')
+        setAccountNumber('')
+        setAccountName('')
+
+        loadHistory()
+      } else {
+        console.error('withdraw request failed', json)
+        toast.error(json.message || 'Withdrawal failed.')
+      }
+    } catch (err) {
+      console.error('submitWithdraw error:', err)
+      toast.error('Server error while initiating withdrawal.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const canSubmit =
+    !!user &&
+    !!bankCode &&
+    accountNumber.trim().length >= 10 &&
+    !!accountName &&
+    amountNumber >= MIN_WITHDRAWAL &&
+    amountNumber <= balance &&
+    !loading
+
   return (
     <div className='max-w-3xl mx-auto p-6 space-y-8'>
       {/* HEADER */}
@@ -228,10 +297,18 @@ export default function WithdrawPage() {
               ₦{balance.toLocaleString()}
             </span>
           </p>
+
+          <div className='flex flex-wrap gap-2 pt-1'>
+            <Badge variant='secondary'>
+              Minimum: ₦{MIN_WITHDRAWAL.toLocaleString()}
+            </Badge>
+            <Badge variant='secondary'>
+              Fee: {Math.round(TAX_RATE * 100)}%
+            </Badge>
+          </div>
         </div>
 
         <div className='hidden md:flex justify-end items-center'>
-          {/* small illustration on the right */}
           <div className='w-36 h-24 rounded-lg overflow-hidden shadow-sm'>
             <Image
               src={illustrationPath}
@@ -256,17 +333,45 @@ export default function WithdrawPage() {
           {/* Bank */}
           <div>
             <label className='block text-sm font-medium mb-2'>Bank</label>
-            <Select onValueChange={(val) => setBankCode(val)}>
+
+            <Select
+              value={bankCode}
+              onValueChange={(val) => {
+                setBankCode(val)
+                // reset account details when bank changes
+                setAccountName('')
+              }}
+            >
               <SelectTrigger className='w-full'>
                 <SelectValue placeholder='Select bank' />
               </SelectTrigger>
+
               <SelectContent>
+                {/* Search input inside dropdown */}
+                <div className='p-2'>
+                  <div className='relative'>
+                    <Search className='absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500' />
+                    <input
+                      value={bankSearch}
+                      onChange={(e) => setBankSearch(e.target.value)}
+                      placeholder='Search bank...'
+                      className='w-full rounded-md border bg-white px-8 py-2 text-sm outline-none'
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
                 {banks.length === 0 ? (
-                  <SelectItem value='Select bank'>
+                  <SelectItem value='__none__' disabled>
                     No banks available
                   </SelectItem>
+                ) : filteredBanks.length === 0 ? (
+                  <SelectItem value='__no_match__' disabled>
+                    No bank matches “{bankSearch}”
+                  </SelectItem>
                 ) : (
-                  banks.map((b) => (
+                  filteredBanks.map((b) => (
                     <SelectItem key={b.code} value={b.code}>
                       {b.name}
                     </SelectItem>
@@ -274,6 +379,13 @@ export default function WithdrawPage() {
                 )}
               </SelectContent>
             </Select>
+
+            {bankCode && selectedBankName ? (
+              <p className='text-xs text-slate-500 mt-1'>
+                Selected:{' '}
+                <span className='font-medium'>{selectedBankName}</span>
+              </p>
+            ) : null}
           </div>
 
           {/* Account Number */}
@@ -283,18 +395,35 @@ export default function WithdrawPage() {
             </label>
             <Input
               value={accountNumber}
-              onChange={(e) => setAccountNumber(e.target.value)}
+              onChange={(e) => {
+                // digits only
+                const v = e.target.value.replace(/\D/g, '')
+                setAccountNumber(v)
+                setAccountName('')
+              }}
               onBlur={resolveAccount}
               placeholder='e.g. 0061234567'
+              maxLength={10}
+              inputMode='numeric'
             />
+            <p className='text-xs text-slate-500 mt-1'>
+              We’ll auto-resolve your account name after you finish typing.
+            </p>
           </div>
 
           {/* Account name */}
-          {accountName && (
+          {accountName ? (
             <div className='text-sm text-green-600 font-medium'>
               {accountName}
             </div>
-          )}
+          ) : bankCode && accountNumber.trim().length === 10 ? (
+            <div className='text-xs text-slate-500 flex items-center gap-2'>
+              {loading ? <Loader2 className='h-4 w-4 animate-spin' /> : null}
+              {loading
+                ? 'Resolving account…'
+                : 'Account name will appear here.'}
+            </div>
+          ) : null}
 
           {/* Amount */}
           <div>
@@ -305,19 +434,43 @@ export default function WithdrawPage() {
               onChange={(e) =>
                 setAmount(e.target.value === '' ? '' : Number(e.target.value))
               }
-              placeholder='Enter amount'
+              placeholder={`Minimum ₦${MIN_WITHDRAWAL.toLocaleString()}`}
+              min={MIN_WITHDRAWAL}
             />
-            <p className='text-xs text-gray-500 mt-1'>
-              Max withdrawable:{' '}
-              <span className='font-semibold'>₦{balance.toLocaleString()}</span>
-            </p>
+
+            <div className='mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm'>
+              <div className='rounded-xl border p-3'>
+                <div className='text-xs text-slate-500'>
+                  Fee ({Math.round(TAX_RATE * 100)}%)
+                </div>
+                <div className='font-semibold'>{fmtNGN(fee)}</div>
+              </div>
+
+              <div className='rounded-xl border p-3'>
+                <div className='text-xs text-slate-500'>You’ll receive</div>
+                <div className='font-semibold text-green-700'>
+                  {fmtNGN(net)}
+                </div>
+              </div>
+
+              <div className='rounded-xl border p-3'>
+                <div className='text-xs text-slate-500'>Max withdrawable</div>
+                <div className='font-semibold'>{fmtNGN(balance)}</div>
+              </div>
+            </div>
+
+            {amountNumber > 0 && amountNumber < MIN_WITHDRAWAL ? (
+              <p className='text-xs text-red-600 mt-2'>
+                Minimum withdrawal is ₦{MIN_WITHDRAWAL.toLocaleString()}.
+              </p>
+            ) : null}
           </div>
 
           {/* CTA */}
           <div className='flex items-center gap-3'>
             <Button
               onClick={submitWithdraw}
-              disabled={loading}
+              disabled={!canSubmit}
               className='flex-1'
             >
               {loading ? (
@@ -325,20 +478,25 @@ export default function WithdrawPage() {
                   <Loader2 className='w-4 h-4 animate-spin' /> Processing...
                 </span>
               ) : (
-                'Withdraw'
+                `Withdraw ${amountNumber ? fmtNGN(amountNumber) : ''}`.trim()
               )}
             </Button>
 
             <Button
               variant='outline'
               onClick={() => {
-                // quick refill demo - open contact page (or replace with top-up logic)
                 window.location.href = '/contact-us'
               }}
             >
               Need help?
             </Button>
           </div>
+
+          <p className='text-xs text-slate-500'>
+            By continuing, you agree that a {Math.round(TAX_RATE * 100)}%
+            processing fee will be deducted and you will receive the net amount
+            shown above.
+          </p>
         </CardContent>
       </Card>
 
@@ -363,36 +521,29 @@ export default function WithdrawPage() {
             {history.map((w) => (
               <Card key={w.id} className='p-4 flex justify-between items-start'>
                 <div>
-                  <div className='flex items-center gap-3'>
-                    <div>
-                      <div className='text-base font-semibold'>
-                        ₦{Number(w.amount).toLocaleString()}
-                      </div>
-                      <div className='text-xs text-gray-500'>
-                        to {w.account_name ?? w.account_number}
-                      </div>
-                    </div>
+                  <div className='text-base font-semibold'>
+                    ₦{Number(w.amount).toLocaleString()}
                   </div>
-
+                  <div className='text-xs text-gray-500'>
+                    to {w.account_name ?? w.account_number}
+                  </div>
                   <div className='text-xs text-gray-500 mt-2'>
                     {w.bank_name}
                   </div>
                 </div>
 
                 <div className='text-right'>
-                  <div>
-                    <Badge
-                      variant={
-                        w.status === 'success'
-                          ? 'default'
-                          : w.status === 'failed'
-                          ? 'destructive'
-                          : 'secondary'
-                      }
-                    >
-                      {w.status}
-                    </Badge>
-                  </div>
+                  <Badge
+                    variant={
+                      w.status === 'success'
+                        ? 'default'
+                        : w.status === 'failed'
+                        ? 'destructive'
+                        : 'secondary'
+                    }
+                  >
+                    {w.status}
+                  </Badge>
 
                   <div className='text-xs text-gray-400 mt-2'>
                     {w.created_at
