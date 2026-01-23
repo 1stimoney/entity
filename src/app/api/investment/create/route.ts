@@ -7,13 +7,15 @@ export async function POST(req: Request) {
     const body = await req.json()
 
     const user_id = body.user_id as string | undefined
-    const amount = body.amount as number | undefined
     const source_transaction_id = body.source_transaction_id as
       | string
       | undefined
 
-    // Accept either package_id OR plan_id
+    // Accept either package_id OR plan_id (DB column is package_id)
     const package_id = (body.package_id ?? body.plan_id) as string | undefined
+
+    // amount is optional from client, but we will always use plan.amount as canonical
+    const clientAmount = body.amount as number | undefined
 
     if (!user_id || !package_id) {
       return NextResponse.json({ status: false, message: 'Invalid data' })
@@ -44,8 +46,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 1) Load plan so we can snapshot its fixed daily return
-    // IMPORTANT: this is what powers your "auto-credit every 24h for 30 days"
+    // 1) Load plan so we can snapshot plan.amount + plan.daily_return
     const { data: plan, error: planErr } = await supabaseServer
       .from('investment_plans')
       .select('id, amount, daily_return')
@@ -60,38 +61,38 @@ export async function POST(req: Request) {
       })
     }
 
-    // 2) (Recommended) Validate amount matches plan.amount if amount was provided
-    // This prevents someone from calling this route directly with a fake amount.
-    if (typeof amount === 'number' && Number(amount) !== Number(plan.amount)) {
+    // 2) (Recommended) If client passed amount, validate it matches plan.amount
+    if (
+      typeof clientAmount === 'number' &&
+      Number(clientAmount) !== Number(plan.amount)
+    ) {
       return NextResponse.json({
         status: false,
         message: 'Amount mismatch for selected plan',
       })
     }
 
-    // Use plan amount as canonical
+    // Canonical values
     const finalAmount = Number(plan.amount)
+    const dailyReturn = Number(plan.daily_return ?? 0)
 
-    // 3) Initialize payout window: 30 days
-    const startsAt = new Date()
-    const endsAt = new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+    // 3) 30-day validity window (start now, end 30 days later)
+    const startAt = new Date()
+    const endAt = new Date(startAt.getTime() + 30 * 24 * 60 * 60 * 1000)
 
     // 4) Create investment row
-    // NOTE: "package_id" is your DB column, but it points to investment_plans.id
     const { data: investment, error: investError } = await supabaseServer
       .from('investments')
       .insert({
         user_id,
-        package_id,
+        package_id, // points to investment_plans.id
         amount: finalAmount,
         source_transaction_id: source_transaction_id ?? null,
 
-        // payout engine fields
         status: 'active',
-        starts_at: startsAt.toISOString(),
-        ends_at: endsAt.toISOString(),
-        daily_return: Number(plan.daily_return ?? 0),
-        days_paid: 0,
+        start_at: startAt.toISOString(), // ✅ correct column name
+        end_at: endAt.toISOString(), // ✅ correct column name
+        daily_return: dailyReturn,
         last_paid_at: null,
       })
       .select('*')
