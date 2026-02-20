@@ -2,8 +2,9 @@
 'use client'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
@@ -19,8 +20,15 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { Drawer, DrawerContent } from '@/components/ui/drawer'
-import Link from 'next/link'
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerFooter,
+} from '@/components/ui/drawer'
+import { Separator } from '@/components/ui/separator'
 
 // ---------- Types ----------
 type Plan = {
@@ -50,11 +58,10 @@ export default function InvestNowPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activePlan, setActivePlan] = useState<Plan | null>(null)
 
-  // Illustration path (uploaded file)
+  // Illustration path
   const illustrationPath = '/illustration.png'
 
   useEffect(() => {
-    // load session user
     async function loadUser() {
       const { data } = await supabase.auth.getUser()
       if (data?.user)
@@ -62,7 +69,6 @@ export default function InvestNowPage() {
       else setUser(null)
     }
 
-    // load packages
     async function loadPlans() {
       const { data, error } = await supabase
         .from('investment_plans')
@@ -74,18 +80,18 @@ export default function InvestNowPage() {
         toast.error('Could not load plans.')
         setPlans([])
       } else {
-        const enriched = (data || []).map((p: any, i: number) => ({
+        const list = data || []
+        const enriched = list.map((p: any, i: number) => ({
           id: p.id,
           name: p.name,
           amount: p.amount,
           description: p.description ?? null,
           created_at: p.created_at,
-          // default tags/benefits if not present
           tags:
             p.tags ??
             (i === 0
               ? ['Beginner']
-              : i === Math.floor((data || []).length / 2)
+              : i === Math.floor(list.length / 2)
               ? ['Popular']
               : []),
           benefits:
@@ -103,17 +109,20 @@ export default function InvestNowPage() {
     loadPlans()
   }, [])
 
-  // best / popular plan selection
-  const bestValueId = plans.length ? plans[plans.length - 1].id : null
-  const popularId =
-    plans.length > 1 ? plans[Math.floor(plans.length / 2)].id : null
+  const bestValueId = useMemo(
+    () => (plans.length ? plans[plans.length - 1].id : null),
+    [plans]
+  )
+  const popularId = useMemo(
+    () => (plans.length > 1 ? plans[Math.floor(plans.length / 2)].id : null),
+    [plans]
+  )
 
   const openDetails = (plan: Plan) => {
     setActivePlan(plan)
     setDrawerOpen(true)
   }
 
-  // invest handler
   const handleInvest = async (plan: Plan) => {
     if (!user) {
       setLoginOpen(true)
@@ -123,7 +132,7 @@ export default function InvestNowPage() {
     try {
       setProcessingId(plan.id)
 
-      // 1️⃣ Create transaction first
+      // 1) Create transaction
       const { data: trx, error } = await supabase
         .from('transactions')
         .insert({
@@ -143,16 +152,15 @@ export default function InvestNowPage() {
         return
       }
 
-      // 2️⃣ Generate tx_ref
+      // 2) Generate tx_ref
       const txRef = `inv_${trx.id}`
 
-      // 3️⃣ SAVE tx_ref in DB (THIS WAS MISSING)
+      // 3) Save tx_ref
       await supabase
         .from('transactions')
         .update({ flutterwave_ref: txRef })
         .eq('id', trx.id)
 
-      // ensure Flutterwave script loaded in layout
       // @ts-ignore
       const FlutterwaveCheckout = (window as any).FlutterwaveCheckout
       if (!FlutterwaveCheckout) {
@@ -161,10 +169,9 @@ export default function InvestNowPage() {
         return
       }
 
-      // open inline checkout
       FlutterwaveCheckout({
         public_key: process.env.NEXT_PUBLIC_FLW_PUBLIC_KEY,
-        tx_ref: txRef, // ✅ SAME ref we saved
+        tx_ref: txRef,
         amount: plan.amount,
         currency: 'NGN',
         customer: { email: user.email },
@@ -212,7 +219,7 @@ export default function InvestNowPage() {
             professionally and processed through secure payment providers.
           </p>
 
-          <div className='flex gap-3 mt-4'>
+          <div className='flex flex-wrap gap-3 mt-4'>
             <Link href='/sign-up'>
               <Button>Get Started</Button>
             </Link>
@@ -224,7 +231,6 @@ export default function InvestNowPage() {
             </Link>
           </div>
 
-          {/* quick small features row */}
           <div className='mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3'>
             <div className='flex items-start gap-2'>
               <Star className='w-5 h-5 text-yellow-500 mt-1' />
@@ -285,7 +291,6 @@ export default function InvestNowPage() {
                     isBest ? 'ring-2 ring-yellow-200' : ''
                   }`}
                 >
-                  {/* badges */}
                   <div className='absolute right-4 top-4 flex gap-2'>
                     {isBest && (
                       <Badge className='flex items-center gap-1'>
@@ -316,7 +321,6 @@ export default function InvestNowPage() {
                         {p.description ?? 'Short plan overview.'}
                       </p>
 
-                      {/* benefits */}
                       <ul className='mt-3 space-y-1'>
                         {p.benefits?.slice(0, 3).map((b, i) => (
                           <li key={i} className='text-sm text-gray-600'>
@@ -334,7 +338,6 @@ export default function InvestNowPage() {
                     </div>
                   </div>
 
-                  {/* actions */}
                   <div className='mt-6 flex items-center gap-3'>
                     <Button
                       onClick={() => handleInvest(p)}
@@ -385,7 +388,7 @@ export default function InvestNowPage() {
         </div>
       </section>
 
-      {/* FAQ (under plans) */}
+      {/* FAQ */}
       <section className='mt-6 bg-white p-6 rounded-2xl shadow'>
         <h3 className='text-lg font-semibold mb-4'>Investment FAQ</h3>
 
@@ -423,53 +426,77 @@ export default function InvestNowPage() {
         </div>
       </section>
 
-      {/* Floating Support Button & History Shortcut */}
-      <div>
-        <Link href='/contact-us'>
-          <span className='fixed right-4 bottom-24 bg-blue-600 text-white p-4 rounded-full shadow-lg flex items-center justify-center'>
-            <MessageSquare className='w-5 h-5' />
-          </span>
-        </Link>
-      </div>
+      {/* Floating Support */}
+      <Link href='/contact-us'>
+        <span className='fixed right-4 bottom-24 bg-blue-600 text-white p-4 rounded-full shadow-lg flex items-center justify-center'>
+          <MessageSquare className='w-5 h-5' />
+        </span>
+      </Link>
 
-      {/* Drawer for Plan Details */}
+      {/* Drawer for Plan Details (✅ scrollable + ✅ accessible title) */}
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <DrawerContent className='p-6'>
-          <div className='max-w-2xl mx-auto'>
-            <h3 className='text-2xl font-bold mb-3'>{activePlan?.name}</h3>
+        <DrawerContent className='p-0 max-h-[85vh]'>
+          <DrawerHeader className='px-6 pt-6'>
+            <DrawerTitle className='text-xl font-bold'>
+              {activePlan?.name ?? 'Plan details'}
+            </DrawerTitle>
+            <DrawerDescription className='text-gray-600'>
+              Review the plan details before investing.
+            </DrawerDescription>
+          </DrawerHeader>
+
+          <Separator />
+
+          {/* ✅ Scroll area */}
+          <div className='px-6 py-5 overflow-y-auto max-h-[65vh]'>
             <p className='text-gray-600 mb-4'>{activePlan?.description}</p>
 
             <div className='bg-gray-50 p-4 rounded-lg mb-4'>
               <div className='flex justify-between'>
                 <span className='text-sm text-gray-500'>Amount</span>
                 <span className='font-semibold'>
-                  ₦{activePlan?.amount?.toLocaleString()}
+                  ₦{Number(activePlan?.amount ?? 0).toLocaleString()}
                 </span>
+              </div>
+              <div className='flex justify-between mt-2'>
+                <span className='text-sm text-gray-500'>Duration</span>
+                <span className='font-semibold'>30 days</span>
               </div>
             </div>
 
             <div className='space-y-3'>
               <h4 className='font-semibold'>Benefits</h4>
-              <ul className='list-disc list-inside text-gray-600'>
+              <ul className='list-disc list-inside text-gray-600 space-y-1'>
                 {activePlan?.benefits?.map((b, i) => (
                   <li key={i}>{b}</li>
                 ))}
               </ul>
             </div>
+          </div>
 
-            <div className='mt-6 flex gap-3'>
-              <Button onClick={() => activePlan && handleInvest(activePlan)}>
+          <Separator />
+
+          <DrawerFooter className='px-6 py-4'>
+            <div className='flex gap-3'>
+              <Button
+                className='flex-1'
+                onClick={() => activePlan && handleInvest(activePlan)}
+              >
                 Invest
               </Button>
-              <Button variant='outline' onClick={() => setDrawerOpen(false)}>
+              <Button
+                className='flex-1'
+                variant='outline'
+                onClick={() => setDrawerOpen(false)}
+              >
                 Close
               </Button>
             </div>
-          </div>
+          </DrawerFooter>
         </DrawerContent>
       </Drawer>
 
-      {/* Login dialog */}
+      {/* Login dialog (already accessible because it has DialogTitle) */}
       <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
         <DialogContent>
           <DialogHeader>
